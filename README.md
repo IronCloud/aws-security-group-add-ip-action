@@ -68,7 +68,7 @@ Replace `your-region`, `your-account-id` and `your-security-group-id` with appro
 ## Example usage
 ```yaml
 - name: Add public IP to AWS security group
-  uses: sohelamin/aws-security-group-add-ip-action@master
+  uses: IronCloud/aws-security-group-add-ip-action@master
   with:
     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
