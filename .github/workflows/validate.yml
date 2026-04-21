@@ -1,0 +1,35 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate source syntax
+        run: node --check src/config.js && node --check src/main.js && node --check src/cleanup.js
+
+      - name: Run tests
+        run: npm test
+
+      - name: Rebuild bundles
+        run: npm run package
+
+      - name: Verify dist is up to date
+        run: git diff --exit-code -- dist/main/index.js dist/cleanup/index.js

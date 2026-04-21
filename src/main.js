@@ -1,61 +1,66 @@
 const core = require('@actions/core');
+const {
+  AuthorizeSecurityGroupIngressCommand,
+  DescribeSecurityGroupsCommand,
+  RevokeSecurityGroupIngressCommand,
+} = require('@aws-sdk/client-ec2');
 const publicIp = require('public-ip');
 
-const config = require('./config');
-
-async function run() {
+async function run(runtimeConfig, ipLookup = publicIp.v4) {
+  const effectiveConfig = runtimeConfig || require('./config');
   try {
-    const result = await config.ec2.describeSecurityGroups({
-      GroupIds: config.groupIds,
-    }).promise();
+    const result = await effectiveConfig.ec2.send(new DescribeSecurityGroupsCommand({
+      GroupIds: effectiveConfig.groupIds,
+    }));
 
-    for (const group of result.SecurityGroups) {
-      const ruleByPort = group.IpPermissions
-        .find(permission => {
-            if ( config.toPort !== false ) {
-                return permission.FromPort === config.port
-                    && permission.ToPort === config.toPort
-                    && permission.IpProtocol === config.protocol;
-            }
+    for (const group of result.SecurityGroups || []) {
+      const ruleByPort = (group.IpPermissions || []).find(permission => {
+        if (effectiveConfig.toPort !== false) {
+          return permission.FromPort === effectiveConfig.port
+            && permission.ToPort === effectiveConfig.toPort
+            && permission.IpProtocol === effectiveConfig.protocol;
+        }
 
-            return permission.FromPort === config.port && permission.IpProtocol === config.protocol;
-        });
+        return permission.FromPort === effectiveConfig.port && permission.IpProtocol === effectiveConfig.protocol;
+      });
 
       if (ruleByPort) {
-        const ipByDesc = ruleByPort.IpRanges
-          .find(ip => ip.Description === config.description);
+        const ipByDesc = (ruleByPort.IpRanges || []).find(ip => ip.Description === effectiveConfig.description);
 
         if (ipByDesc) {
-          await config.ec2.revokeSecurityGroupIngress({
+          await effectiveConfig.ec2.send(new RevokeSecurityGroupIngressCommand({
             GroupId: group.GroupId,
             CidrIp: ipByDesc.CidrIp,
-            IpProtocol: config.protocol,
-            FromPort: config.port,
-            ToPort: config.toPort !== false ? config.toPort : config.port,
-          }).promise();
+            IpProtocol: effectiveConfig.protocol,
+            FromPort: effectiveConfig.port,
+            ToPort: effectiveConfig.toPort !== false ? effectiveConfig.toPort : effectiveConfig.port,
+          }));
         }
       }
 
-      const myPublicIp = await publicIp.v4();
-      await config.ec2.authorizeSecurityGroupIngress({
+      const myPublicIp = await ipLookup();
+      await effectiveConfig.ec2.send(new AuthorizeSecurityGroupIngressCommand({
         GroupId: group.GroupId,
         IpPermissions: [{
-          IpProtocol: config.protocol,
-          FromPort: config.port,
-          ToPort: config.toPort !== false ? config.toPort : config.port,
+          IpProtocol: effectiveConfig.protocol,
+          FromPort: effectiveConfig.port,
+          ToPort: effectiveConfig.toPort !== false ? effectiveConfig.toPort : effectiveConfig.port,
           IpRanges: [{
             CidrIp: `${myPublicIp}/32`,
-            Description: config.description,
+            Description: effectiveConfig.description,
           }],
-        }] 
-      }).promise();
+        }],
+      }));
 
-      console.log(`The IP ${myPublicIp} is added`);
+      core.info(`The IP ${myPublicIp} is added`);
     }
-
   } catch (error) {
-    core.setFailed(error.message);
+    core.setFailed(error instanceof Error ? error.message : String(error));
   }
 }
 
-run();
+module.exports = { run };
+
+if (require.main === module) {
+  run();
+}
