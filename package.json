@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "description": "Add IP address to your AWS security group",
   "main": "src/main.js",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "package": "ncc build src/main.js -m -o dist/main && ncc build src/cleanup.js -m -o dist/cleanup"
   },
   "keywords": [
@@ -13,14 +16,14 @@
     "ip",
     "white list"
   ],
-  "author": "sohelamin",
+  "author": "IronCloud",
   "license": "MIT",
   "dependencies": {
-    "@actions/core": "^1.11.1",
-    "aws-sdk": "^2.1692.0",
-    "public-ip": "^7.0.1"
+    "@actions/core": "^3.0.0",
+    "@aws-sdk/client-ec2": "^3.1033.0",
+    "public-ip": "^8.0.0"
   },
   "devDependencies": {
-    "@zeit/ncc": "^0.22.3"
+    "@vercel/ncc": "^0.38.4"
   }
 }

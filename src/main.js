@@ -1,61 +1,77 @@
-const core = require('@actions/core');
-const publicIp = require('public-ip');
+const {
+  AuthorizeSecurityGroupIngressCommand,
+  DescribeSecurityGroupsCommand,
+  RevokeSecurityGroupIngressCommand,
+} = require('@aws-sdk/client-ec2');
+const { loadConfig } = require('./config');
 
-const config = require('./config');
+async function getCore() {
+  return import('@actions/core');
+}
 
-async function run() {
+async function defaultIpLookup() {
+  const { publicIpv4 } = await import('public-ip');
+  return publicIpv4();
+}
+
+async function run(runtimeConfig, ipLookup) {
+  const core = await getCore();
   try {
-    const result = await config.ec2.describeSecurityGroups({
-      GroupIds: config.groupIds,
-    }).promise();
+    const effectiveConfig = runtimeConfig || await loadConfig(core);
+    const lookup = ipLookup || defaultIpLookup;
 
-    for (const group of result.SecurityGroups) {
-      const ruleByPort = group.IpPermissions
-        .find(permission => {
-            if ( config.toPort !== false ) {
-                return permission.FromPort === config.port
-                    && permission.ToPort === config.toPort
-                    && permission.IpProtocol === config.protocol;
-            }
+    const result = await effectiveConfig.ec2.send(new DescribeSecurityGroupsCommand({
+      GroupIds: effectiveConfig.groupIds,
+    }));
 
-            return permission.FromPort === config.port && permission.IpProtocol === config.protocol;
-        });
+    for (const group of result.SecurityGroups || []) {
+      const ruleByPort = (group.IpPermissions || []).find(permission => {
+        if (effectiveConfig.toPort !== false) {
+          return permission.FromPort === effectiveConfig.port
+            && permission.ToPort === effectiveConfig.toPort
+            && permission.IpProtocol === effectiveConfig.protocol;
+        }
+
+        return permission.FromPort === effectiveConfig.port && permission.IpProtocol === effectiveConfig.protocol;
+      });
 
       if (ruleByPort) {
-        const ipByDesc = ruleByPort.IpRanges
-          .find(ip => ip.Description === config.description);
+        const ipByDesc = (ruleByPort.IpRanges || []).find(ip => ip.Description === effectiveConfig.description);
 
         if (ipByDesc) {
-          await config.ec2.revokeSecurityGroupIngress({
+          await effectiveConfig.ec2.send(new RevokeSecurityGroupIngressCommand({
             GroupId: group.GroupId,
             CidrIp: ipByDesc.CidrIp,
-            IpProtocol: config.protocol,
-            FromPort: config.port,
-            ToPort: config.toPort !== false ? config.toPort : config.port,
-          }).promise();
+            IpProtocol: effectiveConfig.protocol,
+            FromPort: effectiveConfig.port,
+            ToPort: effectiveConfig.toPort !== false ? effectiveConfig.toPort : effectiveConfig.port,
+          }));
         }
       }
 
-      const myPublicIp = await publicIp.v4();
-      await config.ec2.authorizeSecurityGroupIngress({
+      const myPublicIp = await lookup();
+      await effectiveConfig.ec2.send(new AuthorizeSecurityGroupIngressCommand({
         GroupId: group.GroupId,
         IpPermissions: [{
-          IpProtocol: config.protocol,
-          FromPort: config.port,
-          ToPort: config.toPort !== false ? config.toPort : config.port,
+          IpProtocol: effectiveConfig.protocol,
+          FromPort: effectiveConfig.port,
+          ToPort: effectiveConfig.toPort !== false ? effectiveConfig.toPort : effectiveConfig.port,
           IpRanges: [{
             CidrIp: `${myPublicIp}/32`,
-            Description: config.description,
+            Description: effectiveConfig.description,
           }],
-        }] 
-      }).promise();
+        }],
+      }));
 
-      console.log(`The IP ${myPublicIp} is added`);
+      core.info(`The IP ${myPublicIp} is added`);
     }
-
   } catch (error) {
-    core.setFailed(error.message);
+    core.setFailed(error instanceof Error ? error.message : String(error));
   }
 }
 
-run();
+module.exports = { run };
+
+if (require.main === module) {
+  run();
+}
