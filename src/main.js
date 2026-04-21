@@ -1,14 +1,25 @@
-const core = require('@actions/core');
 const {
   AuthorizeSecurityGroupIngressCommand,
   DescribeSecurityGroupsCommand,
   RevokeSecurityGroupIngressCommand,
 } = require('@aws-sdk/client-ec2');
-const publicIp = require('public-ip');
+const { loadConfig } = require('./config');
 
-async function run(runtimeConfig, ipLookup = publicIp.v4) {
-  const effectiveConfig = runtimeConfig || require('./config');
+async function getCore() {
+  return import('@actions/core');
+}
+
+async function defaultIpLookup() {
+  const { publicIpv4 } = await import('public-ip');
+  return publicIpv4();
+}
+
+async function run(runtimeConfig, ipLookup) {
+  const core = await getCore();
   try {
+    const effectiveConfig = runtimeConfig || await loadConfig(core);
+    const lookup = ipLookup || defaultIpLookup;
+
     const result = await effectiveConfig.ec2.send(new DescribeSecurityGroupsCommand({
       GroupIds: effectiveConfig.groupIds,
     }));
@@ -38,7 +49,7 @@ async function run(runtimeConfig, ipLookup = publicIp.v4) {
         }
       }
 
-      const myPublicIp = await ipLookup();
+      const myPublicIp = await lookup();
       await effectiveConfig.ec2.send(new AuthorizeSecurityGroupIngressCommand({
         GroupId: group.GroupId,
         IpPermissions: [{
