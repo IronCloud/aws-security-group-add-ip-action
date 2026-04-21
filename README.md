@@ -81,6 +81,10 @@ jobs:
     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     aws-region: us-east-1
     aws-security-group-id: ${{ secrets.AWS_SECURITY_GROUP_ID }}
+    port: '22'
+    to-port: '22'
+    protocol: tcp
+    description: GitHub Action
 ```
 
 ## Required IAM permissions
